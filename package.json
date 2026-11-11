@@ -11,6 +11,8 @@
     "test:media": "tsx --env-file=.env -C react-server tests/media.test.ts",
     "test:publishing": "tsx --env-file=.env -C react-server tests/project-publishing.test.ts",
     "test:services-settings": "tsx --env-file=.env -C react-server tests/services-settings.test.ts",
+    "test:e2e": "tsx --env-file=.env -C react-server tests/e2e-integration.test.ts",
+    "test:all": "npm run test:auth && npm run test:media && npm run test:publishing && npm run test:services-settings && npm run test:e2e",
     "bootstrap:owner": "tsx scripts/bootstrap-owner.ts"
   },
   "dependencies": {
