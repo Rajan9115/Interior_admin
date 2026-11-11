@@ -51,6 +51,7 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
     seoTitle: project.seoTitle,
     seoDescription: project.seoDescription,
     highlights: project.highlights.map((h) => h.text),
+    media: project.media,
   };
 
   return (

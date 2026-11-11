@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:auth": "tsx --env-file=.env -C react-server tests/auth.test.ts",
     "test:media": "tsx --env-file=.env -C react-server tests/media.test.ts",
+    "test:publishing": "tsx --env-file=.env -C react-server tests/project-publishing.test.ts",
     "bootstrap:owner": "tsx scripts/bootstrap-owner.ts"
   },
   "dependencies": {

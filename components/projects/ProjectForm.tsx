@@ -1,9 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { slugify, ProjectInput } from "@/lib/validation/project";
+import { slugify, ProjectInput, validateForPublishing } from "@/lib/validation/project";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { MediaPickerModal } from "@/components/media/MediaPickerModal";
+import { ProjectPreviewModal } from "@/components/projects/ProjectPreviewModal";
+import { MediaAssetItem } from "@/components/media/MediaDetailsModal";
 import {
   Save,
   Send,
@@ -13,8 +17,14 @@ import {
   Image as ImageIcon,
   AlertCircle,
   CheckCircle2,
-  Sparkles,
+  Star,
+  ArrowUp,
+  ArrowDown,
+  Eye,
+  RotateCcw,
+  Video,
 } from "lucide-react";
+import { ProjectMediaRole } from "@prisma/client";
 
 interface CategoryOption {
   id: string;
@@ -22,10 +32,43 @@ interface CategoryOption {
   slug: string;
 }
 
+export interface AttachedMediaItem {
+  mediaAssetId: string;
+  role: ProjectMediaRole;
+  sortOrder: number;
+  asset: {
+    id: string;
+    publicId: string;
+    secureUrl: string;
+    mediaType: "IMAGE" | "VIDEO" | string;
+    altText?: string | null;
+    caption?: string | null;
+    originalName?: string | null;
+    durationSeconds?: number | null;
+    format?: string | null;
+    bytes?: bigint | number | string | null;
+  };
+}
+
 interface ProjectFormProps {
-  initialData?: Partial<ProjectInput> & {
+  initialData?: Omit<Partial<ProjectInput>, "media"> & {
     id?: string;
     status?: string;
+    media?: {
+      role: ProjectMediaRole;
+      sortOrder: number;
+      mediaAsset: {
+        id: string;
+        publicId: string;
+        secureUrl: string;
+        mediaType: "IMAGE" | "VIDEO";
+        altText?: string | null;
+        caption?: string | null;
+        originalName?: string | null;
+        durationSeconds?: number | null;
+        format?: string | null;
+      };
+    }[];
   };
   categories: CategoryOption[];
   isEditing?: boolean;
@@ -64,15 +107,28 @@ export function ProjectForm({
       : [""]
   );
 
+  // Attached media state
+  const [attachedMedia, setAttachedMedia] = useState<AttachedMediaItem[]>(
+    initialData?.media?.map((m) => ({
+      mediaAssetId: m.mediaAsset.id,
+      role: m.role,
+      sortOrder: m.sortOrder,
+      asset: m.mediaAsset,
+    })) || []
+  );
+
+  // Modals & UI controls
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
+
   // Status & feedback
+  const [currentStatus, setCurrentStatus] = useState(initialData?.status || "DRAFT");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  // Archive modal
-  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
-  const [isArchiving, setIsArchiving] = useState(false);
 
   // Auto-slug generator
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,11 +159,86 @@ export function ProjectForm({
     setHighlights(highlights.filter((_, i) => i !== index));
   };
 
-  // Submit Handler
-  const handleSubmit = async (targetStatus: "DRAFT" | "PUBLISHED" = "DRAFT") => {
+  // Media management
+  const handleAddMediaFromPicker = (selectedAssets: MediaAssetItem[]) => {
+    const newItems: AttachedMediaItem[] = selectedAssets.map((asset, idx) => ({
+      mediaAssetId: asset.id,
+      role: ProjectMediaRole.GALLERY,
+      sortOrder: attachedMedia.length + idx,
+      asset,
+    }));
+
+    setAttachedMedia((prev) => {
+      const combined = [...prev, ...newItems];
+      // If there is currently NO cover image, make the first image the COVER automatically
+      const hasCover = combined.some((item) => item.role === ProjectMediaRole.COVER);
+      if (!hasCover && combined.length > 0) {
+        combined[0].role = ProjectMediaRole.COVER;
+      }
+      return combined;
+    });
+  };
+
+  const handleRoleChange = (mediaAssetId: string, newRole: ProjectMediaRole) => {
+    setAttachedMedia((prev) =>
+      prev.map((item) => {
+        if (item.mediaAssetId === mediaAssetId) {
+          return { ...item, role: newRole };
+        }
+        // If changing to COVER, ensure no other item remains COVER (single-cover rule)
+        if (newRole === ProjectMediaRole.COVER && item.role === ProjectMediaRole.COVER) {
+          return { ...item, role: ProjectMediaRole.GALLERY };
+        }
+        return item;
+      })
+    );
+  };
+
+  const handleMoveMedia = (index: number, direction: "up" | "down") => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= attachedMedia.length) return;
+
+    setAttachedMedia((prev) => {
+      const copy = [...prev];
+      const temp = copy[index];
+      copy[index] = copy[targetIndex];
+      copy[targetIndex] = temp;
+      return copy.map((item, idx) => ({ ...item, sortOrder: idx }));
+    });
+  };
+
+  const handleRemoveMedia = (mediaAssetId: string) => {
+    setAttachedMedia((prev) => {
+      const filtered = prev.filter((item) => item.mediaAssetId !== mediaAssetId);
+      // Re-assign sortOrder
+      return filtered.map((item, idx) => ({ ...item, sortOrder: idx }));
+    });
+  };
+
+  // Submit & Save Handler
+  const handleSave = async (targetStatus: "DRAFT" | "PUBLISHED" = "DRAFT") => {
     setError(null);
     setFieldErrors({});
     setSuccessMessage(null);
+
+    // Validation before publish
+    if (targetStatus === "PUBLISHED") {
+      const preValidation = validateForPublishing({
+        title,
+        slug,
+        categoryId,
+        shortDescription,
+        media: attachedMedia.map((m) => ({
+          role: m.role,
+          mediaAssetId: m.mediaAssetId,
+        })),
+      });
+
+      if (!preValidation.isValid) {
+        setError(preValidation.errors.join(" "));
+        return;
+      }
+    }
 
     const payload = {
       title: title.trim(),
@@ -121,6 +252,11 @@ export function ProjectForm({
       seoTitle: seoTitle.trim() || null,
       seoDescription: seoDescription.trim() || null,
       highlights: highlights.map((h) => h.trim()).filter(Boolean),
+      media: attachedMedia.map((m, idx) => ({
+        mediaAssetId: m.mediaAssetId,
+        role: m.role,
+        sortOrder: idx,
+      })),
       status: targetStatus,
     };
 
@@ -147,10 +283,13 @@ export function ProjectForm({
         return;
       }
 
+      setCurrentStatus(targetStatus);
       setSuccessMessage(
-        isEditing
-          ? "Project updated successfully!"
-          : "Project created successfully!"
+        targetStatus === "PUBLISHED"
+          ? "Project published successfully! It is now live on the public site."
+          : isEditing
+          ? "Draft project saved successfully."
+          : "Draft project created successfully."
       );
 
       if (!isEditing && json.data?.id) {
@@ -159,13 +298,36 @@ export function ProjectForm({
         router.refresh();
       }
     } catch {
-      setError("An unexpected network error occurred. Please try again.");
+      setError("An unexpected network error occurred while saving.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Archive Handler
+  // Unpublish handler
+  const handleUnpublish = async () => {
+    if (!initialData?.id) return;
+    try {
+      setIsSaving(true);
+      setError(null);
+      const res = await fetch(`/api/v1/admin/projects/${initialData.id}/unpublish`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message || "Failed to unpublish project");
+      }
+      setCurrentStatus("DRAFT");
+      setSuccessMessage("Project returned to Draft status.");
+      router.refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Unpublish failed");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Archive handler
   const handleArchive = async () => {
     if (!initialData?.id) return;
     try {
@@ -175,103 +337,107 @@ export function ProjectForm({
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
-        setError(json?.error?.message || "Failed to archive project.");
-        setIsArchiveModalOpen(false);
-        return;
+        throw new Error(json.error?.message || "Failed to archive project.");
       }
-      setIsArchiveModalOpen(false);
       router.push("/projects");
-      router.refresh();
-    } catch {
-      setError("Failed to archive project due to a network error.");
-      setIsArchiveModalOpen(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Archive failed.");
     } finally {
       setIsArchiving(false);
+      setIsArchiveModalOpen(false);
     }
   };
 
+  const hasCover = attachedMedia.some((m) => m.role === ProjectMediaRole.COVER);
+  const selectedCategoryName = categories.find((c) => c.id === categoryId)?.name;
+
   return (
-    <div className="space-y-8">
-      {/* Alert Messages */}
-      {error && (
-        <div className="p-4 rounded-xl bg-red-50 border border-red-200 flex items-start gap-3 text-red-800 text-sm">
-          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-semibold">{error}</p>
-            {Object.keys(fieldErrors).length > 0 && (
-              <ul className="mt-2 list-disc list-inside space-y-1 text-xs">
-                {Object.entries(fieldErrors).map(([field, msgs]) => (
-                  <li key={field}>
-                    <span className="font-medium capitalize">{field}:</span> {msgs.join(", ")}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3 text-emerald-800 text-sm">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          <span>{successMessage}</span>
-        </div>
-      )}
-
-      {/* Main Grid: Form Sections */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Column (2 Cols): Project Details */}
+    <>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSave(currentStatus === "PUBLISHED" ? "PUBLISHED" : "DRAFT");
+        }}
+        className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+      >
+        {/* Left Column (2 Cols): Core Editorial Content & Media */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Card 1: Core Details */}
+          {/* Notifications */}
+          {error && (
+            <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-red-600" />
+              <div>
+                <p className="font-semibold">Unable to save project</p>
+                <p className="text-xs text-red-600 mt-0.5">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+
+          {/* Card 1: Core Project Details */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-5">
             <h2 className="text-base font-semibold text-[#172B40] border-b border-slate-100 pb-3">
-              General Project Information
+              Core Project Details
             </h2>
 
+            {/* Title */}
             <div>
-              <label htmlFor="title" className="block text-xs font-semibold uppercase text-slate-700 font-mono mb-1.5">
+              <label className="block text-xs font-semibold text-[#172B40] uppercase tracking-wider mb-1.5">
                 Project Title <span className="text-red-500">*</span>
               </label>
               <input
-                id="title"
                 type="text"
-                required
                 value={title}
                 onChange={handleTitleChange}
-                placeholder="e.g. Modern Acrylic Modular Kitchen & Breakfast Counter"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58] focus:ring-1 focus:ring-[#B58A58]"
+                placeholder="e.g. 3BHK Modular Kitchen & False Ceiling"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
+                required
               />
+              {fieldErrors.title && (
+                <p className="text-xs text-red-600 mt-1">{fieldErrors.title[0]}</p>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="slug" className="block text-xs font-semibold uppercase text-slate-700 font-mono mb-1.5">
-                  URL Slug <span className="text-red-500">*</span>
-                </label>
-                <div className="flex rounded-xl bg-slate-50 border border-slate-300 overflow-hidden focus-within:border-[#B58A58] focus-within:ring-1 focus-within:ring-[#B58A58]">
-                  <span className="px-2.5 py-2.5 bg-slate-100 text-slate-400 text-xs font-mono select-none border-r border-slate-200">
-                    /projects/
-                  </span>
-                  <input
-                    id="slug"
-                    type="text"
-                    required
-                    value={slug}
-                    onChange={handleSlugChange}
-                    className="w-full px-2.5 py-2 text-sm text-[#172B40] font-mono focus:outline-hidden bg-transparent"
-                  />
-                </div>
+            {/* Slug */}
+            <div>
+              <label className="block text-xs font-semibold text-[#172B40] uppercase tracking-wider mb-1.5">
+                URL Slug <span className="text-red-500">*</span>
+              </label>
+              <div className="flex items-center">
+                <span className="px-3 py-2.5 bg-slate-100 border border-r-0 border-slate-300 rounded-l-lg text-xs font-mono text-slate-500">
+                  /projects/
+                </span>
+                <input
+                  type="text"
+                  value={slug}
+                  onChange={handleSlugChange}
+                  placeholder="3bhk-modular-kitchen-false-ceiling"
+                  className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-r-lg text-sm font-mono text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
+                  required
+                />
               </div>
+              {fieldErrors.slug && (
+                <p className="text-xs text-red-600 mt-1">{fieldErrors.slug[0]}</p>
+              )}
+            </div>
 
+            {/* Category, Location & Completion Date */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label htmlFor="category" className="block text-xs font-semibold uppercase text-slate-700 font-mono mb-1.5">
+                <label className="block text-xs font-semibold text-[#172B40] uppercase tracking-wider mb-1.5">
                   Service Category <span className="text-red-500">*</span>
                 </label>
                 <select
-                  id="category"
                   value={categoryId}
                   onChange={(e) => setCategoryId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
+                  required
                 >
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -280,63 +446,62 @@ export function ProjectForm({
                   ))}
                 </select>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="location" className="block text-xs font-semibold uppercase text-slate-700 font-mono mb-1.5">
-                  Location Label (Optional)
+                <label className="block text-xs font-semibold text-[#172B40] uppercase tracking-wider mb-1.5">
+                  Location Label
                 </label>
                 <input
-                  id="location"
                   type="text"
                   value={locationLabel}
                   onChange={(e) => setLocationLabel(e.target.value)}
-                  placeholder="e.g. Residential Apartment, India"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
+                  placeholder="e.g. Andheri West, Mumbai"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
                 />
               </div>
 
               <div>
-                <label htmlFor="completionDate" className="block text-xs font-semibold uppercase text-slate-700 font-mono mb-1.5">
-                  Handover / Completion Date
+                <label className="block text-xs font-semibold text-[#172B40] uppercase tracking-wider mb-1.5">
+                  Completion Date
                 </label>
                 <input
-                  id="completionDate"
                   type="date"
                   value={completionDate}
                   onChange={(e) => setCompletionDate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
                 />
               </div>
             </div>
 
+            {/* Short Summary */}
             <div>
-              <label htmlFor="shortDescription" className="block text-xs font-semibold uppercase text-slate-700 font-mono mb-1.5">
-                Short Summary (Card Preview) <span className="text-red-500">*</span>
+              <label className="block text-xs font-semibold text-[#172B40] uppercase tracking-wider mb-1.5">
+                Short Summary <span className="text-red-500">*</span>
               </label>
               <textarea
-                id="shortDescription"
-                required
                 rows={2}
                 value={shortDescription}
                 onChange={(e) => setShortDescription(e.target.value)}
-                placeholder="A concise 1-2 sentence overview shown in project cards and gallery previews..."
-                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
+                placeholder="Brief 1-2 sentence overview shown in project cards and previews..."
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
+                required
               />
+              {fieldErrors.shortDescription && (
+                <p className="text-xs text-red-600 mt-1">{fieldErrors.shortDescription[0]}</p>
+              )}
             </div>
 
+            {/* Full Description */}
             <div>
-              <label htmlFor="description" className="block text-xs font-semibold uppercase text-slate-700 font-mono mb-1.5">
-                Full Scope & Workmanship Description
+              <label className="block text-xs font-semibold text-[#172B40] uppercase tracking-wider mb-1.5">
+                Detailed Scope of Work
               </label>
               <textarea
-                id="description"
-                rows={5}
+                rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Comprehensive technical details on materials used, execution process, specifications, and craftsmanship nuances..."
-                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
+                placeholder="Detailed notes on carpentry specifications, electrical wiring, paint coats, or false ceiling grid details..."
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
               />
             </div>
           </div>
@@ -345,7 +510,7 @@ export function ProjectForm({
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h2 className="text-base font-semibold text-[#172B40]">Project Highlights</h2>
+                <h2 className="text-base font-semibold text-[#172B40]">Workmanship Highlights</h2>
                 <p className="text-xs text-slate-500">Key bullet points (e.g. materials, hardware, standards)</p>
               </div>
               <button
@@ -384,31 +549,163 @@ export function ProjectForm({
             </div>
           </div>
 
-          {/* Card 3: Media Upload Placeholder (Phase 4 Foundation) */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-4">
-            <div className="border-b border-slate-100 pb-3">
-              <h2 className="text-base font-semibold text-[#172B40]">Media & Photos</h2>
-              <p className="text-xs text-slate-500">
-                Cover photo and gallery documentation
-              </p>
+          {/* Card 3: Media & Photos (Phase 5 Full Integration) */}
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-[#172B40]">Project Media & Photos</h2>
+                <p className="text-xs text-slate-500">
+                  Select cover photo, execution photos, videos, and before/after pairs.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMediaPickerOpen(true)}
+                className="inline-flex items-center gap-2 px-3.5 py-2 bg-[#D9A84E] text-[#172B40] rounded-lg text-xs font-semibold hover:bg-[#e2b562] transition-colors shadow-xs"
+              >
+                <Plus className="w-4 h-4" />
+                Add Media from Library
+              </button>
             </div>
 
-            {/* Placeholder Indicator */}
-            <div className="p-4 rounded-xl bg-amber-50/70 border border-dashed border-amber-300 text-amber-900 text-xs space-y-1">
-              <p className="font-semibold flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-amber-600" />
-                <span>Cloudinary Direct Signed Uploads (Scheduled for Phase 4)</span>
-              </p>
-              <p className="text-amber-700 leading-relaxed">
-                Project draft creation and editing are active now. Direct browser-to-Cloudinary upload dropzones, file drag-and-drop reordering, and video streaming will activate in Phase 4.
-              </p>
-            </div>
+            {/* Cover missing alert */}
+            {attachedMedia.length > 0 && !hasCover && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  <strong>No Cover Image Designated:</strong> Please assign one of the photos below as &quot;Cover Image&quot; before publishing.
+                </span>
+              </div>
+            )}
 
-            <div className="p-8 border-2 border-dashed border-slate-200 rounded-xl text-center bg-slate-50/50">
-              <ImageIcon className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-xs font-semibold text-slate-600">Cover & Gallery Dropzone Placeholder</p>
-              <p className="text-[11px] text-slate-400 mt-1">Accepts JPG, PNG, WebP up to 15MB, MP4 up to 100MB</p>
-            </div>
+            {attachedMedia.length === 0 ? (
+              <div
+                onClick={() => setIsMediaPickerOpen(true)}
+                className="p-8 border-2 border-dashed border-slate-300 rounded-xl text-center bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-colors"
+              >
+                <ImageIcon className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-slate-700">No media attached to this project yet</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Click here to attach photos and videos from your Cloudinary media library.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {attachedMedia.map((item, idx) => {
+                  const isCover = item.role === ProjectMediaRole.COVER;
+                  const isVideo = item.asset.mediaType === "VIDEO";
+
+                  return (
+                    <div
+                      key={item.mediaAssetId}
+                      className={`p-3 rounded-xl border flex flex-col sm:flex-row items-stretch sm:items-center gap-4 transition-all ${
+                        isCover
+                          ? "bg-amber-50/60 border-[#D9A84E] shadow-xs"
+                          : "bg-slate-50 border-slate-200"
+                      }`}
+                    >
+                      {/* Thumbnail Preview */}
+                      <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-slate-900 shrink-0 border border-slate-200">
+                        {isVideo ? (
+                          <div className="w-full h-full flex items-center justify-center text-purple-400 bg-slate-800">
+                            <Video className="w-6 h-6" />
+                          </div>
+                        ) : (
+                          <Image
+                            src={item.asset.secureUrl}
+                            alt={item.asset.altText || item.asset.originalName || "Asset"}
+                            fill
+                            sizes="80px"
+                            className="object-cover"
+                          />
+                        )}
+                        {isCover && (
+                          <span
+                            className="absolute top-1 left-1 bg-[#D9A84E] text-[#172B40] p-1 rounded shadow-xs"
+                            title="Cover Image"
+                          >
+                            <Star className="w-3 h-3 fill-current" />
+                          </span>
+                        )}
+                        {isVideo && (
+                          <span className="absolute bottom-1 right-1 bg-purple-600 text-white text-[9px] px-1 py-0.5 rounded font-semibold">
+                            Video
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Info & Role Select */}
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-slate-800 truncate" title={item.asset.originalName || item.asset.publicId}>
+                            {item.asset.originalName || item.asset.publicId}
+                          </span>
+                          {isCover && (
+                            <span className="px-2 py-0.5 bg-[#D9A84E]/20 text-[#9E7444] rounded text-[10px] font-bold uppercase tracking-wider">
+                              Cover
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-mono truncate">
+                          {item.asset.publicId}
+                        </p>
+
+                        <div className="pt-1 flex items-center gap-2">
+                          <label className="text-[11px] font-medium text-slate-600">Role:</label>
+                          <select
+                            value={item.role}
+                            onChange={(e) =>
+                              handleRoleChange(item.mediaAssetId, e.target.value as ProjectMediaRole)
+                            }
+                            className={`text-xs px-2.5 py-1 rounded-md border font-medium focus:outline-hidden ${
+                              isCover
+                                ? "bg-amber-100 border-[#D9A84E] text-[#9E7444]"
+                                : "bg-white border-slate-300 text-slate-700"
+                            }`}
+                          >
+                            <option value={ProjectMediaRole.COVER}>⭐ Cover Image (Main Display)</option>
+                            <option value={ProjectMediaRole.GALLERY}>Gallery Photo / Video</option>
+                            <option value={ProjectMediaRole.PROCESS}>Execution / Work in Progress</option>
+                            <option value={ProjectMediaRole.BEFORE}>Before Renovation</option>
+                            <option value={ProjectMediaRole.AFTER}>After Completion</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Sorting & Removal Controls */}
+                      <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => handleMoveMedia(idx, "up")}
+                          disabled={idx === 0}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200 disabled:opacity-30"
+                          title="Move up in order"
+                        >
+                          <ArrowUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveMedia(idx, "down")}
+                          disabled={idx === attachedMedia.length - 1}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200 disabled:opacity-30"
+                          title="Move down in order"
+                        >
+                          <ArrowDown className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMedia(item.mediaAssetId)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 ml-1"
+                          title="Unlink from project"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -423,8 +720,14 @@ export function ProjectForm({
             {isEditing && (
               <div className="flex items-center justify-between text-xs py-1">
                 <span className="text-slate-500">Current Status:</span>
-                <span className="font-semibold uppercase text-slate-800">
-                  {initialData?.status || "DRAFT"}
+                <span
+                  className={`font-bold uppercase px-2 py-0.5 rounded text-[11px] ${
+                    currentStatus === "PUBLISHED"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {currentStatus}
                 </span>
               </div>
             )}
@@ -449,91 +752,146 @@ export function ProjectForm({
               </label>
             </div>
 
+            {/* Preview Button */}
+            <button
+              type="button"
+              onClick={() => setIsPreviewOpen(true)}
+              className="w-full py-2.5 px-4 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+            >
+              <Eye className="w-4 h-4 text-slate-500" />
+              Preview Client View
+            </button>
+
             {/* Action Buttons */}
-            <div className="space-y-2.5 pt-2">
+            <div className="space-y-2 pt-2">
+              {/* Save Draft */}
               <button
                 type="button"
-                onClick={() => handleSubmit("DRAFT")}
                 disabled={isSaving}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-[#172B40] bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors disabled:opacity-50"
+                onClick={() => handleSave("DRAFT")}
+                className="w-full py-2.5 px-4 bg-white border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
-                <span>{isSaving ? "Saving..." : "Save Draft"}</span>
+                {isSaving ? "Saving..." : "Save as Draft"}
               </button>
 
+              {/* Publish to Live Website */}
               <button
                 type="button"
-                onClick={() => handleSubmit("PUBLISHED")}
-                disabled={isSaving}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-[#172B40] hover:bg-[#101E2E] rounded-xl shadow-xs transition-colors disabled:opacity-50"
+                disabled={isSaving || !hasCover}
+                onClick={() => handleSave("PUBLISHED")}
+                className="w-full py-2.5 px-4 bg-[#172B40] text-white text-xs font-semibold rounded-lg hover:bg-[#1f3752] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shadow-xs"
+                title={!hasCover ? "Please assign a cover image before publishing" : "Publish to live website"}
               >
-                <Send className="w-4 h-4 text-[#B58A58]" />
-                <span>{isSaving ? "Processing..." : "Publish to Website"}</span>
+                <Send className="w-4 h-4 text-[#D9A84E]" />
+                {currentStatus === "PUBLISHED" ? "Update Live Project" : "Publish to Live Website"}
               </button>
 
-              {isEditing && initialData?.status !== "ARCHIVED" && (
+              {/* Unpublish */}
+              {isEditing && currentStatus === "PUBLISHED" && (
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={handleUnpublish}
+                  className="w-full py-2 px-3 border border-amber-300 text-amber-700 text-xs font-semibold rounded-lg hover:bg-amber-50 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Return to Draft
+                </button>
+              )}
+            </div>
+
+            {/* Archive */}
+            {isEditing && (
+              <div className="pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsArchiveModalOpen(true)}
-                  disabled={isSaving}
-                  className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-50"
+                  className="w-full py-2 text-xs font-medium text-slate-400 hover:text-red-600 transition-colors flex items-center justify-center gap-1.5"
                 >
                   <Archive className="w-3.5 h-3.5" />
                   <span>Archive Project</span>
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Card: SEO Meta Overrides */}
+          {/* Card: SEO Metadata */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-4">
             <h3 className="text-sm font-semibold text-[#172B40] uppercase tracking-wider font-mono border-b border-slate-100 pb-3">
-              SEO & Social Metadata
+              Search Engine Optimization
             </h3>
 
             <div>
-              <label htmlFor="seoTitle" className="block text-xs font-semibold text-slate-700 mb-1">
-                Custom SEO Title (Optional)
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Custom SEO Title
               </label>
               <input
-                id="seoTitle"
                 type="text"
                 value={seoTitle}
                 onChange={(e) => setSeoTitle(e.target.value)}
-                placeholder="Defaults to project title"
+                placeholder="Leave blank to use project title"
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
               />
             </div>
 
             <div>
-              <label htmlFor="seoDescription" className="block text-xs font-semibold text-slate-700 mb-1">
-                Custom Meta Description (Optional)
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Meta Description
               </label>
               <textarea
-                id="seoDescription"
                 rows={3}
                 value={seoDescription}
                 onChange={(e) => setSeoDescription(e.target.value)}
-                placeholder="Defaults to short summary"
+                placeholder="Leave blank to use short summary"
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs text-[#172B40] focus:bg-white focus:outline-hidden focus:border-[#B58A58]"
               />
             </div>
           </div>
         </div>
-      </div>
+      </form>
+
+      {/* Media Picker Modal */}
+      <MediaPickerModal
+        isOpen={isMediaPickerOpen}
+        projectId={initialData?.id}
+        alreadySelectedIds={attachedMedia.map((m) => m.mediaAssetId)}
+        onClose={() => setIsMediaPickerOpen(false)}
+        onSelect={handleAddMediaFromPicker}
+      />
+
+      {/* Live Client Preview Modal */}
+      <ProjectPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        data={{
+          title,
+          categoryName: selectedCategoryName,
+          locationLabel,
+          shortDescription,
+          description,
+          completionDate,
+          highlights: highlights.filter(Boolean),
+          media: attachedMedia.map((m) => ({
+            role: m.role,
+            secureUrl: m.asset.secureUrl,
+            mediaType: m.asset.mediaType,
+            altText: m.asset.altText,
+            caption: m.asset.caption,
+          })),
+        }}
+      />
 
       {/* Archive Confirmation Dialog */}
       <ConfirmDialog
         isOpen={isArchiveModalOpen}
         title="Archive Project"
-        message={`Are you sure you want to archive "${title}"? This will immediately remove it from the public website while safely preserving all project data and photos.`}
-        confirmLabel="Archive"
+        message={`Are you sure you want to archive "${title}"? It will be immediately removed from the public website, but its photos and documentation will be safely preserved in your CMS.`}
+        confirmLabel={isArchiving ? "Archiving..." : "Archive Project"}
         isDestructive
-        isLoading={isArchiving}
         onConfirm={handleArchive}
         onCancel={() => setIsArchiveModalOpen(false)}
       />
-    </div>
+    </>
   );
 }
-

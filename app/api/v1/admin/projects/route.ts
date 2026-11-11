@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { requireAdmin, verifyMutationOrigin } from "@/lib/auth/guard";
-import { projectSchema } from "@/lib/validation/project";
+import { projectSchema, validateForPublishing } from "@/lib/validation/project";
 import { findAdminProjects } from "@/server/repositories/project.repository";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, serializeBigInt } from "@/lib/db/prisma";
 import { logActivity } from "@/server/audit/audit.service";
 import {
   apiSuccess,
@@ -26,7 +26,10 @@ export async function GET(request: NextRequest) {
   const query = searchParams.get("q") || undefined;
   const categorySlug = searchParams.get("category") || undefined;
   const statusParam = searchParams.get("status") as ContentStatus | null;
-  const status = statusParam && Object.values(ContentStatus).includes(statusParam) ? statusParam : undefined;
+  const status =
+    statusParam && Object.values(ContentStatus).includes(statusParam)
+      ? statusParam
+      : undefined;
   const page = parseInt(searchParams.get("page") || "1", 10);
   const pageSize = parseInt(searchParams.get("pageSize") || "15", 10);
 
@@ -43,7 +46,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/v1/admin/projects
- * Creates a new project draft or published entry.
+ * Creates a new project draft or published entry with verified media.
  */
 export async function POST(request: NextRequest) {
   const adminContext = await requireAdmin(request);
@@ -70,7 +73,12 @@ export async function POST(request: NextRequest) {
       if (!fieldErrors[field]) fieldErrors[field] = [];
       fieldErrors[field].push(issue.message);
     }
-    return apiError("VALIDATION_ERROR", "Please review submitted fields.", 422, fieldErrors);
+    return apiError(
+      "VALIDATION_ERROR",
+      "Please review submitted fields.",
+      422,
+      fieldErrors
+    );
   }
 
   const data = validation.data;
@@ -81,9 +89,14 @@ export async function POST(request: NextRequest) {
   });
 
   if (existingProject) {
-    return apiError("SLUG_CONFLICT", "A project with this URL slug already exists.", 409, {
-      slug: ["This slug is already in use."],
-    });
+    return apiError(
+      "SLUG_CONFLICT",
+      "A project with this URL slug already exists.",
+      409,
+      {
+        slug: ["This slug is already in use."],
+      }
+    );
   }
 
   // 2. Check category existence
@@ -95,13 +108,47 @@ export async function POST(request: NextRequest) {
     return apiError("INVALID_CATEGORY", "Selected category does not exist.", 400);
   }
 
+  // 3. Verify that all submitted mediaAssetIds exist in database
+  if (data.media && data.media.length > 0) {
+    const assetIds = data.media.map((m) => m.mediaAssetId);
+    const existingAssets = await prisma.mediaAsset.findMany({
+      where: { id: { in: assetIds } },
+      select: { id: true },
+    });
+    if (existingAssets.length !== assetIds.length) {
+      return apiError(
+        "INVALID_MEDIA",
+        "One or more referenced media assets do not exist.",
+        400
+      );
+    }
+  }
+
   const requestedStatus = (body as { status?: ContentStatus }).status;
   const status =
     requestedStatus && Object.values(ContentStatus).includes(requestedStatus)
       ? requestedStatus
       : ContentStatus.DRAFT;
 
-  // 3. Create project inside transaction with highlights
+  // If publishing directly, enforce publishing rules (title, shortDesc, cover image)
+  if (status === ContentStatus.PUBLISHED) {
+    const publishValidation = validateForPublishing({
+      title: data.title,
+      slug: data.slug,
+      categoryId: data.categoryId,
+      shortDescription: data.shortDescription,
+      media: data.media,
+    });
+    if (!publishValidation.isValid) {
+      return apiError(
+        "PUBLISH_CRITERIA_UNMET",
+        publishValidation.errors.join(" "),
+        422
+      );
+    }
+  }
+
+  // 4. Create project inside transaction with highlights and media
   const newProject = await prisma.$transaction(async (tx) => {
     const project = await tx.project.create({
       data: {
@@ -123,17 +170,28 @@ export async function POST(request: NextRequest) {
             sortOrder: idx,
           })),
         },
+        media: {
+          create: data.media.map((m, idx) => ({
+            mediaAssetId: m.mediaAssetId,
+            role: m.role,
+            sortOrder: m.sortOrder ?? idx,
+          })),
+        },
       },
       include: {
         category: true,
         highlights: { orderBy: { sortOrder: "asc" } },
+        media: {
+          include: { mediaAsset: true },
+          orderBy: { sortOrder: "asc" },
+        },
       },
     });
 
     return project;
   });
 
-  // 4. Log activity
+  // 5. Log activity
   await logActivity({
     adminUserId: adminContext.adminUser.id,
     action: ActivityAction.PROJECT_CREATED,
@@ -142,6 +200,5 @@ export async function POST(request: NextRequest) {
     summary: `Created project "${newProject.title}" as ${newProject.status}`,
   });
 
-  return apiSuccess(newProject, undefined, 201);
+  return apiSuccess(serializeBigInt(newProject), undefined, 201);
 }
-

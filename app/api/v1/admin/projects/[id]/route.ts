@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireAdmin, verifyMutationOrigin } from "@/lib/auth/guard";
-import { projectSchema } from "@/lib/validation/project";
+import { projectSchema, validateForPublishing } from "@/lib/validation/project";
 import { prisma, serializeBigInt } from "@/lib/db/prisma";
 import { logActivity } from "@/server/audit/audit.service";
 import {
@@ -63,6 +63,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const existingProject = await prisma.project.findUnique({
     where: { id },
+    include: {
+      media: true,
+    },
   });
 
   if (!existingProject) {
@@ -84,7 +87,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       if (!fieldErrors[field]) fieldErrors[field] = [];
       fieldErrors[field].push(issue.message);
     }
-    return apiError("VALIDATION_ERROR", "Please review submitted fields.", 422, fieldErrors);
+    return apiError(
+      "VALIDATION_ERROR",
+      "Please review submitted fields.",
+      422,
+      fieldErrors
+    );
   }
 
   const data = validation.data;
@@ -95,9 +103,30 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       where: { slug: data.slug },
     });
     if (slugConflict && slugConflict.id !== id) {
-      return apiError("SLUG_CONFLICT", "A project with this URL slug already exists.", 409, {
-        slug: ["This slug is already in use."],
-      });
+      return apiError(
+        "SLUG_CONFLICT",
+        "A project with this URL slug already exists.",
+        409,
+        {
+          slug: ["This slug is already in use."],
+        }
+      );
+    }
+  }
+
+  // 2. Verify mediaAssetIds exist
+  if (data.media && data.media.length > 0) {
+    const assetIds = data.media.map((m) => m.mediaAssetId);
+    const existingAssets = await prisma.mediaAsset.findMany({
+      where: { id: { in: assetIds } },
+      select: { id: true },
+    });
+    if (existingAssets.length !== assetIds.length) {
+      return apiError(
+        "INVALID_MEDIA",
+        "One or more referenced media assets do not exist.",
+        400
+      );
     }
   }
 
@@ -107,10 +136,41 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       ? requestedStatus
       : existingProject.status;
 
-  // 2. Transactionally update project and highlights
+  // If status is PUBLISHED, check publishing criteria
+  if (status === ContentStatus.PUBLISHED) {
+    const publishValidation = validateForPublishing({
+      title: data.title,
+      slug: data.slug,
+      categoryId: data.categoryId,
+      shortDescription: data.shortDescription,
+      media: data.media,
+    });
+    if (!publishValidation.isValid) {
+      return apiError(
+        "PUBLISH_CRITERIA_UNMET",
+        publishValidation.errors.join(" "),
+        422
+      );
+    }
+  }
+
+  // 3. Transactionally update project, highlights, and media
   const updatedProject = await prisma.$transaction(async (tx) => {
-    // Delete existing highlights and recreate
+    // Delete existing highlights and media
     await tx.projectHighlight.deleteMany({ where: { projectId: id } });
+    await tx.projectMedia.deleteMany({ where: { projectId: id } });
+
+    // Insert new media if any
+    if (data.media && data.media.length > 0) {
+      await tx.projectMedia.createMany({
+        data: data.media.map((m, idx) => ({
+          projectId: id,
+          mediaAssetId: m.mediaAssetId,
+          role: m.role,
+          sortOrder: m.sortOrder ?? idx,
+        })),
+      });
+    }
 
     const project = await tx.project.update({
       where: { id },
@@ -121,7 +181,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         locationLabel: data.locationLabel,
         shortDescription: data.shortDescription,
         description: data.description,
-        completionDate: data.completionDate ? new Date(data.completionDate) : null,
+        completionDate: data.completionDate
+          ? new Date(data.completionDate)
+          : null,
         isFeatured: data.isFeatured,
         status,
         publishedAt:
@@ -150,7 +212,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return project;
   });
 
-  // 3. Log activity
+  // 4. Log activity
   await logActivity({
     adminUserId: adminContext.adminUser.id,
     action: ActivityAction.PROJECT_UPDATED,
@@ -161,4 +223,3 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   return apiSuccess(serializeBigInt(updatedProject));
 }
-
