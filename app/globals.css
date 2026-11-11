@@ -1,26 +1,46 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --bg-base: #F8F9FA;
+  --bg-surface: #FFFFFF;
+  --bg-surface-muted: #F3F4F6;
+  
+  --color-primary: #172B40;
+  --color-primary-hover: #101E2E;
+  --color-accent: #B58A58;
+  --color-accent-hover: #9E7444;
+  --color-accent-light: #F5EFE6;
+  
+  --color-text-main: #172B40;
+  --color-text-muted: #64748B;
+  --color-border: #E2E8F0;
+  --color-border-strong: #CBD5E1;
+  
+  --color-success: #21865B;
+  --color-warning: #D97706;
+  --color-error: #B42318;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg-base);
+  color: var(--color-text-main);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar for tables & sidebars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
 }
