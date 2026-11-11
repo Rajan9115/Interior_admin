@@ -55,8 +55,11 @@ export function apiForbidden(message = "Access denied. Insufficient permissions.
   return apiError("FORBIDDEN", message, 403);
 }
 
-export function apiNotFound(message = "Requested resource was not found.") {
-  return apiError("NOT_FOUND", message, 404);
+export function apiNotFound(
+  message = "Requested resource was not found.",
+  headers?: HeadersInit
+) {
+  return apiError("NOT_FOUND", message, 404, undefined, headers);
 }
 
 export function apiTooManyRequests(
@@ -68,4 +71,21 @@ export function apiTooManyRequests(
 export function apiInternalError(message = "An unexpected server error occurred.") {
   return apiError("INTERNAL_SERVER_ERROR", message, 500);
 }
+
+export function getCorsHeaders(request?: Request): Record<string, string> {
+  const allowed = (
+    process.env.ALLOWED_PUBLIC_ORIGINS || "https://mamainterior.in,http://localhost:3000"
+  )
+    .split(",")
+    .map((s) => s.trim());
+  const origin = request?.headers.get("origin") || "";
+  const allowOrigin = allowed.includes(origin) ? origin : allowed[0] || "*";
+
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
+
 

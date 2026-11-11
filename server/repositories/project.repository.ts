@@ -5,6 +5,7 @@ import { ContentStatus, Prisma } from "@prisma/client";
 export interface PublicProjectsFilter {
   categorySlug?: string;
   limit?: number;
+  featured?: boolean;
 }
 
 export interface AdminProjectsFilter {
@@ -26,6 +27,10 @@ export async function findPublishedProjects(filter: PublicProjectsFilter = {}) {
 
   if (filter.categorySlug) {
     where.category = { slug: filter.categorySlug };
+  }
+
+  if (typeof filter.featured === "boolean") {
+    where.isFeatured = filter.featured;
   }
 
   const projects = await prisma.project.findMany({
