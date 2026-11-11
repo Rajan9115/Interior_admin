@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum MediaResourceType {
+  IMAGE
+  VIDEO
+}
+
+enum ProjectMediaRole {
+  COVER
+  GALLERY
+  PROCESS
+  BEFORE
+  AFTER
+}
+
+enum AdminRole {
+  OWNER
+}
+
+enum ActivityAction {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  LOGOUT
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  PROJECT_PUBLISHED
+  PROJECT_UNPUBLISHED
+  PROJECT_ARCHIVED
+  MEDIA_UPLOADED
+  MEDIA_DELETED
+  SERVICE_UPDATED
+  SETTINGS_UPDATED
+}
+
+model AdminUser {
+  id           String         @id @default(uuid()) @db.Uuid
+  email        String         @unique
+  passwordHash String
+  displayName  String
+  role         AdminRole      @default(OWNER)
+  isActive     Boolean        @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  sessions     AdminSession[]
+  activityLogs ActivityLog[]
+
+  @@map("admin_users")
+}
+
+model AdminSession {
+  id            String    @id @default(uuid()) @db.Uuid
+  adminUserId   String    @db.Uuid
+  tokenHash     String    @unique
+  expiresAt     DateTime
+  lastSeenAt    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  userAgent     String?
+  ipAddressHash String?
+  adminUser     AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId])
+  @@index([expiresAt])
+  @@map("admin_sessions")
+}
+
+model ServiceCategory {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String    @unique
+  description String?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  services    Service[]
+  projects    Project[]
+
+  @@index([isActive, sortOrder])
+  @@map("service_categories")
+}
+
+model Project {
+  id               String                   @id @default(uuid()) @db.Uuid
+  title            String
+  slug             String                   @unique
+  categoryId       String                   @db.Uuid
+  locationLabel    String?
+  shortDescription String
+  description      String?
+  completionDate   DateTime?
+  isFeatured       Boolean                  @default(false)
+  sortOrder        Int                      @default(0)
+  status           ContentStatus            @default(DRAFT)
+  seoTitle         String?
+  seoDescription   String?
+  publishedAt      DateTime?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  archivedAt       DateTime?
+  category         ServiceCategory          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  media            ProjectMedia[]
+  highlights       ProjectHighlight[]
+  homepageFeature  HomepageFeaturedProject?
+
+  @@index([status, publishedAt])
+  @@index([categoryId, status, sortOrder])
+  @@index([isFeatured, status, sortOrder])
+  @@index([updatedAt])
+  @@map("projects")
+}
+
+model MediaAsset {
+  id              String            @id @default(uuid()) @db.Uuid
+  provider        String            @default("cloudinary")
+  publicId        String            @unique
+  assetId         String?           @unique
+  resourceType    MediaResourceType
+  mediaType       MediaType
+  secureUrl       String
+  format          String?
+  mimeType        String?
+  bytes           BigInt
+  width           Int?
+  height          Int?
+  durationSeconds Float?
+  originalName    String?
+  altText         String?
+  caption         String?
+  folder          String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  projectLinks    ProjectMedia[]
+
+  @@index([mediaType, createdAt])
+  @@map("media_assets")
+}
+
+model ProjectMedia {
+  id           String           @id @default(uuid()) @db.Uuid
+  projectId    String           @db.Uuid
+  mediaAssetId String           @db.Uuid
+  role         ProjectMediaRole @default(GALLERY)
+  sortOrder    Int              @default(0)
+  createdAt    DateTime         @default(now())
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mediaAsset   MediaAsset       @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, mediaAssetId])
+  @@index([projectId, role, sortOrder])
+  @@map("project_media")
+}
+
+model ProjectHighlight {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  text      String
+  sortOrder Int      @default(0)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sortOrder])
+  @@map("project_highlights")
+}
+
+model Service {
+  id               String          @id @default(uuid()) @db.Uuid
+  categoryId       String          @db.Uuid
+  title            String
+  slug             String          @unique
+  shortDescription String
+  description      String?
+  isActive         Boolean         @default(true)
+  sortOrder        Int             @default(0)
+  seoTitle         String?
+  seoDescription   String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  category         ServiceCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([categoryId, isActive, sortOrder])
+  @@map("services")
+}
+
+model SiteSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("site_settings")
+}
+
+model HomepageFeaturedProject {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @unique @db.Uuid
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([sortOrder])
+  @@map("homepage_featured_projects")
+}
+
+model ActivityLog {
+  id          String         @id @default(uuid()) @db.Uuid
+  adminUserId String?        @db.Uuid
+  action      ActivityAction
+  entityType  String?
+  entityId    String?
+  summary     String
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+  adminUser   AdminUser?     @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([adminUserId, createdAt])
+  @@map("activity_logs")
+}
+
