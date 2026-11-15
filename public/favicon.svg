@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 25 432 365" width="432" height="365">
+  <title>MAMA INTERIOR - Favicon</title>
+  
+  <!-- Sailing Boat Symbol -->
+  <g id="sailing-boat">
+    <!-- Left Sail (Jib / Foresail) in Dusty Rose -->
+    <path id="foresail" d="M 236 96
+             L 236 262
+             C 192 270, 152 274, 118 272
+             C 124 208, 172 148, 236 96
+             Z"
+          fill="#E98291"/>
+
+    <!-- Right Sail (Mainsail) in Dusty Rose -->
+    <path id="mainsail" d="M 256 42
+             L 256 262
+             C 306 268, 356 266, 396 256
+             C 391 168, 346 90, 256 42
+             Z"
+          fill="#E98291"/>
+
+    <!-- Sleek Hull Line in Muted Ocean Blue -->
+    <path id="hull" d="M 90 288
+             C 174 314, 334 314, 418 278
+             C 345 300, 165 300, 90 288
+             Z"
+          fill="#5685C5"/>
+
+    <!-- Primary Ocean Wave Crest in Muted Ocean Blue -->
+    <path id="wave-crest" d="M 58 324
+             C 145 302, 235 330, 325 315
+             C 385 305, 430 318, 456 310
+             C 420 332, 360 338, 315 334
+             C 225 348, 140 348, 58 324
+             Z"
+          fill="#5685C5"/>
+
+    <!-- Secondary Harmonic Swell in Muted Ocean Blue -->
+    <path id="wave-swell" d="M 112 358
+             C 188 342, 258 362, 328 350
+             C 378 342, 414 352, 428 346
+             C 398 368, 354 372, 314 368
+             C 244 378, 178 376, 112 358
+             Z"
+          fill="#5685C5"
+          opacity="0.82"/>
+  </g>
+</svg>

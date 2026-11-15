@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Lock, Mail, AlertCircle, ArrowRight } from "lucide-react";
 
@@ -52,13 +53,25 @@ export default function LoginPage() {
       <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
         {/* Brand Header */}
         <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-xl bg-[#172B40] text-[#B58A58] flex items-center justify-center font-bold text-lg mx-auto shadow-sm">
-            MI
+          <div className="relative w-16 h-16 mx-auto mb-3">
+            <Image
+              src="/branding/symbol.svg"
+              alt="MAMA INTERIOR Logo"
+              width={64}
+              height={64}
+              className="w-full h-full object-contain"
+              priority
+            />
           </div>
-          <h1 className="mt-4 text-2xl font-bold text-[#172B40] tracking-tight font-heading">
-            MAMA INTERIOR CMS
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <div className="flex flex-col items-center justify-center">
+            <span className="font-heading text-2xl font-black tracking-wider uppercase text-[#243B53]">
+              MAMA
+            </span>
+            <span className="text-[11px] font-semibold tracking-[0.28em] uppercase text-[#5685C5] -mt-0.5">
+              INTERIOR CMS
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-slate-500">
             Secure owner administration and content portal
           </p>
         </div>

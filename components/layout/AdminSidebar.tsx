@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -52,16 +53,23 @@ export function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
       >
         {/* Brand Header */}
         <div className="h-16 flex items-center justify-between px-5 border-b border-white/10 shrink-0">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#B58A58] flex items-center justify-center text-white font-bold text-sm tracking-wider shadow-xs">
-              MI
+          <Link href="/" className="flex items-center gap-2.5 group">
+            <div className="relative w-8 h-8 shrink-0">
+              <Image
+                src="/branding/symbol.svg"
+                alt="MAMA INTERIOR Logo"
+                width={32}
+                height={32}
+                className="w-full h-full object-contain transition-transform duration-200 group-hover:scale-105"
+                priority
+              />
             </div>
             <div>
               <span className="block font-bold text-white text-sm tracking-tight font-heading leading-tight">
                 MAMA INTERIOR
               </span>
-              <span className="block text-[10px] text-[#B58A58] font-mono uppercase tracking-widest">
-                CMS Owner Portal
+              <span className="block text-[10px] text-[#5685C5] font-mono uppercase tracking-widest">
+                CMS Portal
               </span>
             </div>
           </Link>

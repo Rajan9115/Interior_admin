@@ -1,3 +1,4 @@
+Object.assign(process.env, { NODE_ENV: "test" });
 import "server-only";
 import assert from "node:assert/strict";
 import {

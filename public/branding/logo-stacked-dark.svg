@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 620" width="700" height="620">
+  <title>MAMA INTERIOR - Primary Logo (Stacked Dark)</title>
+  <g transform="translate(94, 20)">
+    
+  <!-- Sailing Boat Symbol -->
+  <g id="sailing-boat">
+    <!-- Left Sail (Jib / Foresail) in Dusty Rose -->
+    <path id="foresail" d="M 236 96
+             L 236 262
+             C 192 270, 152 274, 118 272
+             C 124 208, 172 148, 236 96
+             Z"
+          fill="#E98291"/>
+
+    <!-- Right Sail (Mainsail) in Dusty Rose -->
+    <path id="mainsail" d="M 256 42
+             L 256 262
+             C 306 268, 356 266, 396 256
+             C 391 168, 346 90, 256 42
+             Z"
+          fill="#E98291"/>
+
+    <!-- Sleek Hull Line in Muted Ocean Blue -->
+    <path id="hull" d="M 90 288
+             C 174 314, 334 314, 418 278
+             C 345 300, 165 300, 90 288
+             Z"
+          fill="#5685C5"/>
+
+    <!-- Primary Ocean Wave Crest in Muted Ocean Blue -->
+    <path id="wave-crest" d="M 58 324
+             C 145 302, 235 330, 325 315
+             C 385 305, 430 318, 456 310
+             C 420 332, 360 338, 315 334
+             C 225 348, 140 348, 58 324
+             Z"
+          fill="#5685C5"/>
+
+    <!-- Secondary Harmonic Swell in Muted Ocean Blue -->
+    <path id="wave-swell" d="M 112 358
+             C 188 342, 258 362, 328 350
+             C 378 342, 414 352, 428 346
+             C 398 368, 354 372, 314 368
+             C 244 378, 178 376, 112 358
+             Z"
+          fill="#5685C5"
+          opacity="0.82"/>
+  </g>
+  </g>
+  <g id="brand-typography">
+<path transform="translate(172.84, 480) scale(0.58)" fill="#F7F5F0" d="M 0 0 L 14 0 L 14 -70 L 48 -18 L 62 -18 L 96 -70 L 96 0 L 110 0 L 110 -100 L 90 -100 L 55 -45 L 20 -100 L 0 -100 Z"/><path transform="translate(276.64, 480) scale(0.58)" fill="#F7F5F0" d="M 0 0 L 15 0 L 33 -40 L 59 -40 L 77 0 L 92 0 L 54 -100 L 38 -100 Z M 38 -52 L 54 -52 L 46 -72 Z"/><path transform="translate(370, 480) scale(0.58)" fill="#F7F5F0" d="M 0 0 L 14 0 L 14 -70 L 48 -18 L 62 -18 L 96 -70 L 96 0 L 110 0 L 110 -100 L 90 -100 L 55 -45 L 20 -100 L 0 -100 Z"/><path transform="translate(473.8, 480) scale(0.58)" fill="#F7F5F0" d="M 0 0 L 15 0 L 33 -40 L 59 -40 L 77 0 L 92 0 L 54 -100 L 38 -100 Z M 38 -52 L 54 -52 L 46 -72 Z"/><line x1="137.58" y1="525" x2="197.58" y2="525" stroke="#5685C5" stroke-width="1.5" stroke-linecap="round" opacity="0.65"/>
+<path transform="translate(217.58, 535) scale(0.19)" fill="#F7F5F0" d="M 0 0 L 12 0 L 12 -100 L 0 -100 Z"/>
+<path transform="translate(245.86, 535) scale(0.19)" fill="#F7F5F0" d="M 0 0 L 12 0 L 12 -65 L 56 0 L 70 0 L 70 -100 L 58 -100 L 58 -35 L 14 -100 L 0 -100 Z"/>
+<path transform="translate(285.16, 535) scale(0.19)" fill="#F7F5F0" d="M 28 0 L 40 0 L 40 -88 L 68 -88 L 68 -100 L 0 -100 L 0 -88 L 28 -88 Z"/>
+<path transform="translate(324.08000000000004, 535) scale(0.19)" fill="#F7F5F0" d="M 0 0 L 58 0 L 58 -12 L 12 -12 L 12 -44 L 50 -44 L 50 -56 L 12 -56 L 12 -88 L 58 -88 L 58 -100 L 0 -100 Z"/>
+<path transform="translate(361.1, 535) scale(0.19)" fill="#F7F5F0" d="M 0 0 L 12 0 L 12 -42 L 36 -42 L 56 0 L 70 0 L 48 -44 C 58 -48, 66 -56, 66 -72 C 66 -88, 56 -100, 36 -100 L 0 -100 Z M 12 -88 L 34 -88 C 46 -88, 54 -82, 54 -71 C 54 -60, 46 -54, 34 -54 L 12 -54 Z"/>
+<path transform="translate(400.40000000000003, 535) scale(0.19)" fill="#F7F5F0" d="M 0 0 L 12 0 L 12 -100 L 0 -100 Z"/>
+<path transform="translate(428.68000000000006, 535) scale(0.19)" fill="#F7F5F0" d="M 38 0 C 60 0, 76 -22, 76 -50 C 76 -78, 60 -100, 38 -100 C 16 -100, 0 -78, 0 -50 C 0 -22, 16 0, 38 0 Z M 38 -12 C 24 -12, 12 -28, 12 -50 C 12 -72, 24 -88, 38 -88 C 52 -88, 64 -72, 64 -50 C 64 -28, 52 -12, 38 -12 Z"/>
+<path transform="translate(469.12000000000006, 535) scale(0.19)" fill="#F7F5F0" d="M 0 0 L 12 0 L 12 -42 L 36 -42 L 56 0 L 70 0 L 48 -44 C 58 -48, 66 -56, 66 -72 C 66 -88, 56 -100, 36 -100 L 0 -100 Z M 12 -88 L 34 -88 C 46 -88, 54 -82, 54 -71 C 54 -60, 46 -54, 34 -54 L 12 -54 Z"/>
+<line x1="502.4200000000001" y1="525" x2="562.4200000000001" y2="525" stroke="#5685C5" stroke-width="1.5" stroke-linecap="round" opacity="0.65"/>
+</g>
+</svg>
