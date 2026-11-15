@@ -70,7 +70,7 @@ export default async function EditProjectPage({ params }: EditProjectPageProps) 
             <StatusBadge status={project.status} />
             {project.status === ContentStatus.PUBLISHED && (
               <a
-                href={`https://mamainterior.in/projects/${project.slug}`}
+                href={`https://mamainterior.vercel.app/projects/${project.slug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"

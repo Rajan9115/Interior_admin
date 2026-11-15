@@ -258,7 +258,7 @@ export default async function ProjectsListPage({ searchParams }: ProjectsPagePro
                         <div className="flex items-center justify-end gap-2">
                           {p.status === ContentStatus.PUBLISHED && (
                             <a
-                              href={`https://mamainterior.in/projects/${p.slug}`}
+                              href={`https://mamainterior.vercel.app/projects/${p.slug}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="p-1.5 rounded-lg text-slate-400 hover:text-[#172B40] hover:bg-slate-100 transition-colors"
